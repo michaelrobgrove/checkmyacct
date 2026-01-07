@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Status Checker</title>
+  <style>
+    :root { 
+      --primary: #10b981; /* Green brand color */
+      --primary-hover: #059669;
+      --bg: #111827;      /* Dark mode background */
+      --card: #1f2937; 
+      --text: #f3f4f6;
+      --error: #ef4444;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; min-height: 100vh; box-sizing: border-box; }
+    .container { width: 100%; max-width: 480px; margin-top: 40px; }
+    
+    /* IP Bar */
+    .ip-box { background: #374151; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 25px; border: 1px solid #4b5563; }
+    .ip-label { font-size: 0.75rem; text-transform: uppercase; color: #9ca3af; letter-spacing: 1px; }
+    .ip-address { font-size: 1.25rem; font-weight: 700; margin: 5px 0; font-family: monospace; color: #fff; cursor: pointer; }
+    .ip-help { font-size: 0.8rem; color: #9ca3af; }
+
+    /* Main Card */
+    .card { background: var(--card); padding: 30px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
+    h2 { margin-top: 0; text-align: center; margin-bottom: 25px; font-weight: 600; }
+    
+    label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #d1d5db; }
+    select, input { width: 100%; padding: 12px; margin-bottom: 18px; background: #374151; border: 1px solid #4b5563; color: white; border-radius: 6px; font-size: 1rem; box-sizing: border-box; outline: none; }
+    select:focus, input:focus { border-color: var(--primary); }
+    
+    button { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    button:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    button:disabled { background: #4b5563; cursor: not-allowed; transform: none; }
+
+    /* Results */
+    #result-area { display: none; margin-top: 25px; animation: slideUp 0.3s ease-out; }
+    
+    .status-header { text-align: center; margin-bottom: 20px; }
+    .badge { display: inline-block; padding: 6px 16px; border-radius: 50px; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; }
+    .badge-active { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
+    .badge-expired { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #b91c1c; }
+
+    .info-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #374151; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #9ca3af; }
+    .info-val { font-weight: 600; }
+
+    /* Errors */
+    .error-box { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #fca5a5; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; display: none; font-size: 0.95rem; line-height: 1.5; }
+
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="ip-box" id="ip-box">
+    <div class="ip-label">Your IP Address</div>
+    <div class="ip-address" id="user-ip">Loading...</div>
+    <div class="ip-help">Tap to Copy</div>
+  </div>
+
+  <div class="card">
+    <h2>Connection Check</h2>
+    
+    <label>Select Server Location</label>
+    <select id="domain">
+      <option value="https://useast.tfplus.stream">US East (useast.tfplus.stream)</option>
+      <option value="https://uswest.tfplus.stream">US West (uswest.tfplus.stream)</option>
+      <option value="https://hk.tfplus.stream">Asia (hk.tfplus.stream)</option>
+    </select>
+
+    <label>Username</label>
+    <input type="text" id="username" placeholder="Enter username">
+
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Enter password">
+
+    <button onclick="runDiagnostics()" id="btn">Run Diagnostic</button>
+
+    <div id="error-msg" class="error-box"></div>
+
+    <div id="result-area">
+      <div class="status-header">
+        <span id="status-badge" class="badge"></span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Expiration</span>
+        <span class="info-val" id="exp-date"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Active Connections</span>
+        <span class="info-val" id="active-cons"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Max Allowed</span>
+        <span class="info-val" id="max-cons"></span>
+      </div>
+      
+      <div style="margin-top: 15px; font-size: 0.85rem; color: #6b7280; text-align: center;">
+        Server Message: <span id="srv-msg" style="color: #d1d5db;"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 1. Get User IP on Load
+  fetch('https://api.ipify.org?format=json')
+    .then(res => res.json())
+    .then(data => document.getElementById('user-ip').innerText = data.ip)
+    .catch(() => document.getElementById('user-ip').innerText = "Unavailable");
+
+  // Copy IP Feature
+  document.getElementById('ip-box').onclick = function() {
+    const ip = document.getElementById('user-ip').innerText;
+    if(ip !== "Loading..." && ip !== "Unavailable") {
+      navigator.clipboard.writeText(ip);
+      alert("IP Address Copied!");
+    }
+  };
+
+  // 2. Main Diagnostic Function
+  async function runDiagnostics() {
+    const btn = document.getElementById('btn');
+    const resultArea = document.getElementById('result-area');
+    const errorBox = document.getElementById('error-msg');
+    
+    // Inputs
+    const domain = document.getElementById('domain').value;
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+
+    if(!username || !password) {
+      alert("Please enter both username and password");
+      return;
+    }
+
+    // Reset UI
+    btn.disabled = true;
+    btn.innerText = "Diagnosing...";
+    resultArea.style.display = 'none';
+    errorBox.style.display = 'none';
+    document.getElementById('ip-box').style.borderColor = "#4b5563"; // Reset border
+
+    try {
+      // --- TEST A: Client-Side "Ping" (Detects IP Blocks) ---
+      // We try to touch the server directly from the user's browser.
+      let clientCanReach = false;
+      try {
+        await fetch(domain + "/player_api.php", { 
+            method: 'HEAD', 
+            mode: 'no-cors', // Opaque request just to test connectivity
+            cache: 'no-cache'
+        });
+        clientCanReach = true;
+      } catch (e) {
+        clientCanReach = false;
+      }
+
+      // --- TEST B: Proxy Check (Validates Account) ---
+      // We ask Cloudflare to check the account credentials.
+      const proxyReq = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, username, password })
+      });
+      const proxyData = await proxyReq.json();
+
+      // --- ANALYSIS ---
+
+      // 1. If Proxy sees a 502/500, the server is genuinely down for everyone.
+      if (proxyData.error && proxyData.error.includes("502")) {
+        throw new Error(`The Server (${domain}) appears to be down. Please try a different location.`);
+      }
+
+      // 2. If Client failed but Proxy succeeded -> IP BLOCK DETECTED
+      // (The tool can reach the server, but the user cannot)
+      if (!clientCanReach && proxyData.user_info) {
+        document.getElementById('ip-box').style.borderColor = "#ef4444"; // Highlight IP box red
+        throw new Error(`⚠️ <strong>IP BLOCKED</strong><br>The server is online and your account is valid, but your device cannot reach it.<br><br>Please copy your IP (above) and send it to support.`);
+      }
+
+      // 3. If Proxy returns an error (like "Invalid details")
+      if (proxyData.error) {
+        throw new Error(proxyData.error);
+      }
+
+      // 4. Success - Render Data
+      renderSuccess(proxyData.user_info);
+
+    } catch (err) {
+      errorBox.innerHTML = err.message; // Use innerHTML to allow bold tags
+      errorBox.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.innerText = "Run Diagnostic";
+    }
+  }
+
+  function renderSuccess(u) {
+    const resultArea = document.getElementById('result-area');
+    const isActive = u.status === 'Active';
+
+    // Format Date
+    let dateStr = "Unlimited";
+    if (u.exp_date && u.exp_date !== "null") {
+      const d = new Date(parseInt(u.exp_date) * 1000);
+      dateStr = d.toLocaleDateString();
+    }
+
+    // Update Badge
+    const badge = document.getElementById('status-badge');
+    badge.innerText = u.status;
+    badge.className = "badge " + (isActive ? "badge-active" : "badge-expired");
+
+    document.getElementById('exp-date').innerText = dateStr;
+    document.getElementById('active-cons').innerText = u.active_cons;
+    document.getElementById('max-cons').innerText = u.max_connections;
+    document.getElementById('srv-msg').innerText = u.message || "None";
+
+    resultArea.style.display = 'block';
+  }
+</script>
+
+</body>
+</html>
